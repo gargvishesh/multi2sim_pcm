@@ -134,7 +134,7 @@ void mem_system_init(void)
 			mem_report_file_name);
 
 	/* NMOESI memory event-driven simulation */
-
+        //6-11
 	EV_MOD_NMOESI_LOAD = esim_register_event_with_name(mod_handler_nmoesi_load,
 			mem_domain_index, "mod_nmoesi_load");
 	EV_MOD_NMOESI_LOAD_LOCK = esim_register_event_with_name(mod_handler_nmoesi_load,
@@ -147,7 +147,7 @@ void mem_system_init(void)
 			mem_domain_index, "mod_nmoesi_load_unlock");
 	EV_MOD_NMOESI_LOAD_FINISH = esim_register_event_with_name(mod_handler_nmoesi_load,
 			mem_domain_index, "mod_nmoesi_load_finish");
-
+        //12-16
 	EV_MOD_NMOESI_STORE = esim_register_event_with_name(mod_handler_nmoesi_store,
 			mem_domain_index, "mod_nmoesi_store");
 	EV_MOD_NMOESI_STORE_LOCK = esim_register_event_with_name(mod_handler_nmoesi_store,
@@ -158,7 +158,7 @@ void mem_system_init(void)
 			mem_domain_index, "mod_nmoesi_store_unlock");
 	EV_MOD_NMOESI_STORE_FINISH = esim_register_event_with_name(mod_handler_nmoesi_store,
 			mem_domain_index, "mod_nmoesi_store_finish");
-	
+	//17-23
 	EV_MOD_NMOESI_NC_STORE = esim_register_event_with_name(mod_handler_nmoesi_nc_store,
 			mem_domain_index, "mod_nmoesi_nc_store");
 	EV_MOD_NMOESI_NC_STORE_LOCK = esim_register_event_with_name(mod_handler_nmoesi_nc_store,
@@ -173,7 +173,7 @@ void mem_system_init(void)
 			mem_domain_index, "mod_nmoesi_nc_store_unlock");
 	EV_MOD_NMOESI_NC_STORE_FINISH = esim_register_event_with_name(mod_handler_nmoesi_nc_store,
 			mem_domain_index, "mod_nmoesi_nc_store_finish");
-
+        //24-29
 	EV_MOD_NMOESI_PREFETCH = esim_register_event_with_name(mod_handler_nmoesi_prefetch,
 			mem_domain_index, "mod_nmoesi_prefetch");
 	EV_MOD_NMOESI_PREFETCH_LOCK = esim_register_event_with_name(mod_handler_nmoesi_prefetch,
@@ -186,7 +186,7 @@ void mem_system_init(void)
 			mem_domain_index, "mod_nmoesi_prefetch_unlock");
 	EV_MOD_NMOESI_PREFETCH_FINISH = esim_register_event_with_name(mod_handler_nmoesi_prefetch,
 			mem_domain_index, "mod_nmoesi_prefetch_finish");
-
+        //30-33
 	EV_MOD_NMOESI_FIND_AND_LOCK = esim_register_event_with_name(mod_handler_nmoesi_find_and_lock,
 			mem_domain_index, "mod_nmoesi_find_and_lock");
 	EV_MOD_NMOESI_FIND_AND_LOCK_PORT = esim_register_event_with_name(mod_handler_nmoesi_find_and_lock,
@@ -195,7 +195,7 @@ void mem_system_init(void)
 			mem_domain_index, "mod_nmoesi_find_and_lock_action");
 	EV_MOD_NMOESI_FIND_AND_LOCK_FINISH = esim_register_event_with_name(mod_handler_nmoesi_find_and_lock,
 			mem_domain_index, "mod_nmoesi_find_and_lock_finish");
-
+        //34-43
 	EV_MOD_NMOESI_EVICT = esim_register_event_with_name(mod_handler_nmoesi_evict,
 			mem_domain_index, "mod_nmoesi_evict");
 	EV_MOD_NMOESI_EVICT_INVALID = esim_register_event_with_name(mod_handler_nmoesi_evict,
@@ -216,7 +216,7 @@ void mem_system_init(void)
 			mem_domain_index, "mod_nmoesi_evict_reply_receive");
 	EV_MOD_NMOESI_EVICT_FINISH = esim_register_event_with_name(mod_handler_nmoesi_evict,
 			mem_domain_index, "mod_nmoesi_evict_finish");
-
+        //44 - 53
 	EV_MOD_NMOESI_WRITE_REQUEST = esim_register_event_with_name(mod_handler_nmoesi_write_request,
 			mem_domain_index, "mod_nmoesi_write_request");
 	EV_MOD_NMOESI_WRITE_REQUEST_RECEIVE = esim_register_event_with_name(mod_handler_nmoesi_write_request,
@@ -237,7 +237,7 @@ void mem_system_init(void)
 			mem_domain_index, "mod_nmoesi_write_request_reply");
 	EV_MOD_NMOESI_WRITE_REQUEST_FINISH = esim_register_event_with_name(mod_handler_nmoesi_write_request,
 			mem_domain_index, "mod_nmoesi_write_request_finish");
-
+        //54-64
 	EV_MOD_NMOESI_READ_REQUEST = esim_register_event_with_name(mod_handler_nmoesi_read_request,
 			mem_domain_index, "mod_nmoesi_read_request");
 	EV_MOD_NMOESI_READ_REQUEST_RECEIVE = esim_register_event_with_name(mod_handler_nmoesi_read_request,
@@ -260,7 +260,7 @@ void mem_system_init(void)
 			mem_domain_index, "mod_nmoesi_read_request_reply");
 	EV_MOD_NMOESI_READ_REQUEST_FINISH = esim_register_event_with_name(mod_handler_nmoesi_read_request,
 			mem_domain_index, "mod_nmoesi_read_request_finish");
-
+        //65-66
 	EV_MOD_NMOESI_INVALIDATE = esim_register_event_with_name(mod_handler_nmoesi_invalidate,
 			mem_domain_index, "mod_nmoesi_invalidate");
 	EV_MOD_NMOESI_INVALIDATE_FINISH = esim_register_event_with_name(mod_handler_nmoesi_invalidate,

@@ -26,6 +26,7 @@
 #include <lib/util/string.h>
 #include <network/network.h>
 #include <network/node.h>
+#include <string.h>
 
 #include "cache.h"
 #include "directory.h"
@@ -33,7 +34,8 @@
 #include "mod-stack.h"
 #include "prefetcher.h"
 
-
+extern struct mod_t *ptr_l2_mod;
+extern struct mod_t *ptr_dram_mod;
 /* Events */
 
 int EV_MOD_NMOESI_LOAD;
@@ -117,7 +119,7 @@ int EV_MOD_NMOESI_MESSAGE_REPLY;
 int EV_MOD_NMOESI_MESSAGE_FINISH;
 
 
-
+#define PCM_WRITE_WORD_LATENCY 450
 
 
 /* NMOESI Protocol */
@@ -129,13 +131,14 @@ void mod_handler_nmoesi_load(int event, void *data)
 
 	struct mod_t *mod = stack->mod;
 
-
+//        fprintf(stderr, "%lld %lld 0x%x %s load\n", esim_time, stack->id,
+//			stack->addr, mod->name);
 	if (event == EV_MOD_NMOESI_LOAD)
 	{
 		struct mod_stack_t *master_stack;
 
-		mem_debug("%lld %lld 0x%x %s load\n", esim_time, stack->id,
-			stack->addr, mod->name);
+		mem_debug("%lld %lld 0x%x Virt:%p %s load\n", esim_time, stack->id,
+			stack->addr, stack->vtl_addr, mod->name);
 		mem_trace("mem.new_access name=\"A-%lld\" type=\"load\" "
 			"state=\"%s:load\" addr=0x%x\n",
 			stack->id, mod->name, stack->addr);
@@ -189,7 +192,7 @@ void mod_handler_nmoesi_load(int event, void *data)
 		}
 
 		/* Call find and lock */
-		new_stack = mod_stack_create(stack->id, mod, stack->addr,
+		new_stack = mod_stack_create_vishesh(stack->id, mod, stack->addr, stack->vtl_addr,
 			EV_MOD_NMOESI_LOAD_ACTION, stack);
 		new_stack->blocking = 1;
 		new_stack->read = 1;
@@ -232,7 +235,7 @@ void mod_handler_nmoesi_load(int event, void *data)
 		}
 
 		/* Miss */
-		new_stack = mod_stack_create(stack->id, mod, stack->tag,
+		new_stack = mod_stack_create_vishesh(stack->id, mod, stack->tag, stack->vtl_addr,
 			EV_MOD_NMOESI_LOAD_MISS, stack);
 		new_stack->peer = mod_stack_set_peer(mod, stack->state);
 		new_stack->target_mod = mod_get_low_mod(mod, stack->tag);
@@ -331,14 +334,15 @@ void mod_handler_nmoesi_store(int event, void *data)
 	struct mod_stack_t *new_stack;
 
 	struct mod_t *mod = stack->mod;
-
+//        fprintf(stderr, "%lld %lld 0x%x %s store\n", esim_time, stack->id,
+//			stack->addr, mod->name);
 
 	if (event == EV_MOD_NMOESI_STORE)
 	{
 		struct mod_stack_t *master_stack;
 
-		mem_debug("%lld %lld 0x%x %s store\n", esim_time, stack->id,
-			stack->addr, mod->name);
+		mem_debug("%lld %lld 0x%x virt:%p %s store\n", esim_time, stack->id,
+			stack->addr, stack->vtl_addr, mod->name);
 		mem_trace("mem.new_access name=\"A-%lld\" type=\"store\" "
 			"state=\"%s:store\" addr=0x%x\n",
 			stack->id, mod->name, stack->addr);
@@ -387,7 +391,7 @@ void mod_handler_nmoesi_store(int event, void *data)
 		}
 
 		/* Call find and lock */
-		new_stack = mod_stack_create(stack->id, mod, stack->addr,
+		new_stack = mod_stack_create_vishesh(stack->id, mod, stack->addr, stack->vtl_addr,
 			EV_MOD_NMOESI_STORE_ACTION, stack);
 		new_stack->blocking = 1;
 		new_stack->write = 1;
@@ -437,7 +441,7 @@ void mod_handler_nmoesi_store(int event, void *data)
 		}
 
 		/* Miss - state=O/S/I/N */
-		new_stack = mod_stack_create(stack->id, mod, stack->tag,
+		new_stack = mod_stack_create_vishesh(stack->id, mod, stack->tag, stack->vtl_addr,
 			EV_MOD_NMOESI_STORE_UNLOCK, stack);
 		new_stack->peer = mod_stack_set_peer(mod, stack->state);
 		new_stack->target_mod = mod_get_low_mod(mod, stack->tag);
@@ -474,7 +478,31 @@ void mod_handler_nmoesi_store(int event, void *data)
 		/* Update tag/state and unlock */
 		cache_set_block(mod->cache, stack->set, stack->way,
 			stack->tag, cache_block_modified);
-		dir_entry_unlock(mod->dir, stack->set, stack->way);
+                /*Vishesh: To make it write-through*/
+                if(strcmp(mod->cache->name,"x86-l1D") == 0){
+                    int cache_hit, cache_set, cache_way, cache_tag, cache_state;
+                    /*L2-cache*/
+                    cache_hit = mod_find_block(ptr_l2_mod, stack->addr, &cache_set,
+			&cache_way, &cache_tag, &cache_state);
+                    if(cache_hit){
+                         cache_set_block(ptr_l2_mod->cache, cache_set, cache_way,
+			cache_tag, cache_block_modified);
+                    }else
+                    {
+                        fprintf(stderr, "FATAL L1 hit but L2 Miss!\n");
+                    }
+                    cache_hit = mod_find_block(ptr_dram_mod, stack->addr, &cache_set,
+			&cache_way, &cache_tag, &cache_state);
+                    if(cache_hit){
+                         cache_set_block(ptr_dram_mod->cache, cache_set, cache_way,
+			cache_tag, cache_block_modified);
+                         
+                    }else
+                    {
+                        fprintf(stderr, "FATAL L1 hit but DRAM Miss!");
+                    }
+                }
+                dir_entry_unlock(mod->dir, stack->set, stack->way);
 
 		/* Impose the access latency before continuing */
 		esim_schedule_event(EV_MOD_NMOESI_STORE_FINISH, stack, 
@@ -574,7 +602,7 @@ void mod_handler_nmoesi_nc_store(int event, void *data)
 		}
 
 		/* Call find and lock */
-		new_stack = mod_stack_create(stack->id, mod, stack->addr,
+		new_stack = mod_stack_create_vishesh(stack->id, mod, stack->addr, stack->vtl_addr,
 			EV_MOD_NMOESI_NC_STORE_WRITEBACK, stack);
 		new_stack->blocking = 1;
 		new_stack->nc_write = 1;
@@ -660,7 +688,7 @@ void mod_handler_nmoesi_nc_store(int event, void *data)
 		/* E state must tell the lower-level module to remove this module as an owner */
 		else if (stack->state == cache_block_exclusive)
 		{
-			new_stack = mod_stack_create(stack->id, mod, stack->tag,
+			new_stack = mod_stack_create_vishesh(stack->id, mod, stack->tag, stack->vtl_addr,
 				EV_MOD_NMOESI_NC_STORE_MISS, stack);
 			new_stack->message = message_clear_owner;
 			new_stack->target_mod = mod_get_low_mod(mod, stack->tag);
@@ -671,7 +699,7 @@ void mod_handler_nmoesi_nc_store(int event, void *data)
 		 * before it becomes non-coherent */
 		else
 		{
-			new_stack = mod_stack_create(stack->id, mod, stack->tag,
+			new_stack = mod_stack_create_vishesh(stack->id, mod, stack->tag, stack->vtl_addr,
 				EV_MOD_NMOESI_NC_STORE_MISS, stack);
 			new_stack->peer = mod_stack_set_peer(mod, stack->state);
 			new_stack->nc_write = 1;
@@ -827,7 +855,7 @@ void mod_handler_nmoesi_prefetch(int event, void *data)
 		}
 
 		/* Call find and lock */
-		new_stack = mod_stack_create(stack->id, mod, stack->addr,
+		new_stack = mod_stack_create_vishesh(stack->id, mod, stack->addr, stack->vtl_addr,
 			EV_MOD_NMOESI_PREFETCH_ACTION, stack);
 		new_stack->blocking = 0;
 		new_stack->prefetch = 1;
@@ -875,7 +903,7 @@ void mod_handler_nmoesi_prefetch(int event, void *data)
 		}
 
 		/* Miss */
-		new_stack = mod_stack_create(stack->id, mod, stack->tag,
+		new_stack = mod_stack_create_vishesh(stack->id, mod, stack->tag, stack->vtl_addr,
 			EV_MOD_NMOESI_PREFETCH_MISS, stack);
 		new_stack->peer = mod_stack_set_peer(mod, stack->state);
 		new_stack->target_mod = mod_get_low_mod(mod, stack->tag);
@@ -1109,13 +1137,13 @@ void mod_handler_nmoesi_find_and_lock(int event, void *data)
 				fatal("Unknown memory operation type");
 			}
 		}
-
+                int diffWords = 0;
 		if (!stack->hit)
 		{
 			/* Find victim */
 			if (stack->way < 0) 
 			{
-				stack->way = cache_replace_block(mod->cache, stack->set);
+				stack->way = cache_replace_block(mod->cache, stack->set, stack->vtl_addr, &diffWords, stack->write);
 			}
 		}
 		assert(stack->way >= 0);
@@ -1382,12 +1410,12 @@ void mod_handler_nmoesi_evict(int event, void *data)
 		/* Find and lock */
 		if (stack->state == cache_block_noncoherent)
 		{
-			new_stack = mod_stack_create(stack->id, target_mod, stack->src_tag,
+			new_stack = mod_stack_create_vishesh(stack->id, target_mod, stack->src_tag, stack->vtl_addr,
 				EV_MOD_NMOESI_EVICT_PROCESS_NONCOHERENT, stack);
 		}
 		else 
 		{
-			new_stack = mod_stack_create(stack->id, target_mod, stack->src_tag,
+			new_stack = mod_stack_create_vishesh(stack->id, target_mod, stack->src_tag, stack->vtl_addr,
 				EV_MOD_NMOESI_EVICT_PROCESS, stack);
 		}
 
@@ -1670,7 +1698,7 @@ void mod_handler_nmoesi_read_request(int event, void *data)
 			net_receive(target_mod->low_net, target_mod->low_net_node, stack->msg);
 		
 		/* Find and lock */
-		new_stack = mod_stack_create(stack->id, target_mod, stack->addr,
+		new_stack = mod_stack_create_vishesh(stack->id, target_mod, stack->addr,stack->vtl_addr,
 			EV_MOD_NMOESI_READ_REQUEST_ACTION, stack);
 		new_stack->blocking = stack->request_dir == mod_request_down_up;
 		new_stack->read = 1;
@@ -1766,7 +1794,7 @@ void mod_handler_nmoesi_read_request(int event, void *data)
 
 				/* Send read request */
 				stack->pending++;
-				new_stack = mod_stack_create(stack->id, target_mod, dir_entry_tag,
+				new_stack = mod_stack_create_vishesh(stack->id, target_mod, dir_entry_tag, stack->vtl_addr,
 					EV_MOD_NMOESI_READ_REQUEST_UPDOWN_FINISH, stack);
 				/* Only set peer if its a subblock that was requested */
 				if (dir_entry_tag >= stack->addr && 
@@ -1791,7 +1819,7 @@ void mod_handler_nmoesi_read_request(int event, void *data)
 			/* State = I */
 			assert(!dir_entry_group_shared_or_owned(target_mod->dir,
 				stack->set, stack->way));
-			new_stack = mod_stack_create(stack->id, target_mod, stack->tag,
+			new_stack = mod_stack_create_vishesh(stack->id, target_mod, stack->tag, stack->vtl_addr,
 				EV_MOD_NMOESI_READ_REQUEST_UPDOWN_MISS, stack);
 			/* Peer is NULL since we keep going up-down */
 			new_stack->target_mod = mod_get_low_mod(target_mod, stack->tag);
@@ -1967,7 +1995,7 @@ void mod_handler_nmoesi_read_request(int event, void *data)
 				continue;
 
 			stack->pending++;
-			new_stack = mod_stack_create(stack->id, target_mod, dir_entry_tag,
+			new_stack = mod_stack_create_vishesh(stack->id, target_mod, dir_entry_tag, stack->vtl_addr,
 				EV_MOD_NMOESI_READ_REQUEST_DOWNUP_WAIT_FOR_REQS, stack);
 			new_stack->target_mod = owner;
 			new_stack->request_dir = mod_request_down_up;
@@ -1994,7 +2022,7 @@ void mod_handler_nmoesi_read_request(int event, void *data)
 		if (stack->peer)
 		{
 			/* Send this block (or subblock) to the peer */
-			new_stack = mod_stack_create(stack->id, target_mod, stack->tag,
+			new_stack = mod_stack_create_vishesh(stack->id, target_mod, stack->tag, stack->vtl_addr,
 				EV_MOD_NMOESI_READ_REQUEST_DOWNUP_FINISH, stack);
 			new_stack->peer = mod_stack_set_peer(stack->peer, stack->state);
 			new_stack->target_mod = stack->target_mod;
@@ -2315,7 +2343,7 @@ void mod_handler_nmoesi_write_request(int event, void *data)
 			net_receive(target_mod->low_net, target_mod->low_net_node, stack->msg);
 		
 		/* Find and lock */
-		new_stack = mod_stack_create(stack->id, target_mod, stack->addr,
+		new_stack = mod_stack_create_vishesh(stack->id, target_mod, stack->addr, stack->vtl_addr,
 			EV_MOD_NMOESI_WRITE_REQUEST_ACTION, stack);
 		new_stack->blocking = stack->request_dir == mod_request_down_up;
 		new_stack->write = 1;
@@ -2384,7 +2412,7 @@ void mod_handler_nmoesi_write_request(int event, void *data)
 		else if (stack->state == cache_block_owned || stack->state == cache_block_shared ||
 			stack->state == cache_block_invalid || stack->state == cache_block_noncoherent)
 		{
-			new_stack = mod_stack_create(stack->id, target_mod, stack->tag,
+			new_stack = mod_stack_create_vishesh(stack->id, target_mod, stack->tag, stack->vtl_addr,
 				EV_MOD_NMOESI_WRITE_REQUEST_UPDOWN_FINISH, stack);
 			new_stack->peer = mod_stack_set_peer(mod, stack->state);
 			new_stack->target_mod = mod_get_low_mod(target_mod, stack->tag);
@@ -2454,6 +2482,11 @@ void mod_handler_nmoesi_write_request(int event, void *data)
 		/* Set state to exclusive */
 		cache_set_block(target_mod->cache, stack->set, stack->way,
 			stack->tag, cache_block_exclusive);
+                
+                if(stack->write)
+                    cache_set_block(target_mod->cache, stack->set, stack->way,
+			stack->tag, cache_block_modified);
+                
 
 		/* If blocks were sent directly to the peer, the reply size would
 		 * have been decreased.  Based on the final size, we can tell whether
@@ -2519,7 +2552,7 @@ void mod_handler_nmoesi_write_request(int event, void *data)
 				assert(ret->ret_stack->reply_size >= 8);
 
 				/* Send data to the peer */
-				new_stack = mod_stack_create(stack->id, target_mod, stack->tag,
+				new_stack = mod_stack_create_vishesh(stack->id, target_mod, stack->tag, stack->vtl_addr,
 					EV_MOD_NMOESI_WRITE_REQUEST_DOWNUP_FINISH, stack);
 				new_stack->peer = mod_stack_set_peer(stack->peer, stack->state);
 				new_stack->target_mod = stack->target_mod;
@@ -2746,7 +2779,7 @@ void mod_handler_nmoesi_invalidate(int event, void *data)
 				/* Send write request upwards if beginning of block */
 				if (dir_entry_tag % sharer->block_size)
 					continue;
-				new_stack = mod_stack_create(stack->id, mod, dir_entry_tag,
+				new_stack = mod_stack_create_vishesh(stack->id, mod, dir_entry_tag, stack->vtl_addr,
 					EV_MOD_NMOESI_INVALIDATE_FINISH, stack);
 				new_stack->target_mod = sharer;
 				new_stack->request_dir = mod_request_down_up;
@@ -2833,7 +2866,7 @@ void mod_handler_nmoesi_message(int event, void *data)
 		net_receive(target_mod->high_net, target_mod->high_net_node, stack->msg);
 		
 		/* Find and lock */
-		new_stack = mod_stack_create(stack->id, target_mod, stack->addr,
+		new_stack = mod_stack_create_vishesh(stack->id, target_mod, stack->addr, stack->vtl_addr,
 			EV_MOD_NMOESI_MESSAGE_ACTION, stack);
 		new_stack->message = stack->message;
 		new_stack->blocking = 0;

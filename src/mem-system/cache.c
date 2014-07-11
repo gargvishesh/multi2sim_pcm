@@ -26,11 +26,15 @@
 #include "cache.h"
 #include "mem-system.h"
 #include "prefetcher.h"
+#include "memory.h"
 
 
 /*
  * Public Variables
  */
+extern struct mem_t  *g_mem;
+extern unsigned char *mem_lines_wear_dist;
+extern void m2s_dump_brief_summary(FILE* f);
 
 struct str_map_t cache_policy_map =
 {
@@ -53,7 +57,7 @@ struct str_map_t cache_block_state_map =
 	}
 };
 
-
+unsigned long long totalDiffWords;
 
 
 /*
@@ -238,8 +242,15 @@ void cache_set_block(struct cache_t *cache, int set, int way, int tag, int state
 		cache_update_waylist(&cache->sets[set],
 			&cache->sets[set].blocks[way],
 			cache_waylist_head);
+        if(cache->sets[set].blocks[way].tag != tag){
+            //Store original contents of the line here 
+        }
 	cache->sets[set].blocks[way].tag = tag;
 	cache->sets[set].blocks[way].state = state;
+        if(strcmp(cache->name, "x86-l1") == 0 && state == cache_block_modified){
+            
+        }
+        
 }
 
 
@@ -272,37 +283,132 @@ void cache_access_block(struct cache_t *cache, int set, int way)
 			cache_waylist_head);
 }
 
-
+int cmplinewords(char *from_addr, char *to_addr, unsigned int addr)
+        {
+                unsigned int *fp = (unsigned int *)from_addr;
+                unsigned int *tp = (unsigned int *)to_addr;
+                //int *fp = (int *)from_addr;
+                //int *tp = (int *)to_addr;
+                int sum= 0;
+                for (int ii=0; ii<(int)(64/sizeof(unsigned int)); ii++) {
+#if 0
+                        sum += (fp[ii] != tp[ii]);
+#else
+                        if (fp[ii] != tp[ii]){
+                            //fprintf(stderr, "Diff Addr Evicted Word No:%u Old:%u New:%u\n", ii, fp[ii], tp[ii]);
+                            sum ++;
+                        }
+#endif
+                }
+#if 0
+                if (sum>0)
+                {
+                    ptl_logfile<<"Writes VA: "<< virtAddr<<endl;
+                }
+#endif
+                return sum;
+        }
 /* Return the way of the block to be replaced in a specific set,
  * depending on the replacement policy */
-int cache_replace_block(struct cache_t *cache, int set)
+int cache_replace_block(struct cache_t *cache, int set, unsigned int vtl_addr, int *diffWords, int write)
 {
 	//struct cache_block_t *block;
 
-	/* Try to find an invalid block. Do this in the LRU order, to avoid picking the
-	 * MRU while its state has not changed to valid yet. */
-	assert(set >= 0 && set < cache->num_sets);
-	/*
-	for (block = cache->sets[set].way_tail; block; block = block->way_prev)
-		if (!block->state)
-			return block->way;
-	*/
+    /* Try to find an invalid block. Do this in the LRU order, to avoid picking the
+     * MRU while its state has not changed to valid yet. */
+    assert(set >= 0 && set < cache->num_sets);
+    vtl_addr &= ~(63);
+    
+    //fprintf(stderr, "cache->name: %s\n", cache->name);
+    /*
+    for (block = cache->sets[set].way_tail; block; block = block->way_prev)
+            if (!block->state)
+                    return block->way;
+     */
 
-	/* LRU and FIFO replacement: return block at the
-	 * tail of the linked list */
-	if (cache->policy == cache_policy_lru ||
-		cache->policy == cache_policy_fifo)
-	{
-		int way = cache->sets[set].way_tail->way;
-		cache_update_waylist(&cache->sets[set], cache->sets[set].way_tail, 
-			cache_waylist_head);
+    /* LRU and FIFO replacement: return block at the
+     * tail of the linked list */
+    if (cache->policy == cache_policy_lru ||
+            cache->policy == cache_policy_fifo) {
+        int way = cache->sets[set].way_tail->way;
+        //assert(addr != NULL);
+        //fprintf(stderr, "Cache Name: %s\n", cache->name);
+        if (strcmp(cache->name, "x86-dram") == 0) {
+            
+            /*N-chance elimination for LLC*/
+            int i;
+            struct cache_block_t* candidate_block = cache->sets[set].way_tail;
+            for(i=0; i<(cache->assoc)/2; i++)
+            {
+                if(candidate_block->state != cache_block_modified){
+                    way = candidate_block->way;
+                    break;
+                }
+//                fprintf(stderr, "Cool: Skipping Set:%d Way:%d\n", set, candidate_block->way);
+                /*head->*->*->*->tail*/
+                candidate_block = candidate_block->way_prev;
+            }
+            if(way != cache->sets[set].way_tail->way){
+                
+            }
+            
+            unsigned char buf_curr_evicted[64];
+            //fprintf(stderr, "Block Set: %u Way: %u State: %d\n", set, way, cache->sets[set].blocks[way].state);
+            if(cache->sets[set].blocks[way].state == cache_block_modified){
+                mem_read_old_data(g_mem, cache->sets[set].blocks[way].vtl_addr, 64, cache->sets[set].blocks[way].data_orig);
+                mem_read(g_mem, cache->sets[set].blocks[way].vtl_addr, 64, buf_curr_evicted);
+                 *diffWords = cmplinewords(cache->sets[set].blocks[way].data_orig, (char*)buf_curr_evicted, cache->sets[set].blocks[way].vtl_addr);
+                 totalDiffWords += *diffWords;
+                 if(*diffWords){
+//                     fprintf(stderr, "Writes Flag:%d Addr:%p Set:%d Way:%d State:%d DiffWords:%d totalDiffWords:%u\n", cache->sets[set].blocks[way].flag_write, cache->sets[set].blocks[way].vtl_addr, set, way, cache->sets[set].blocks[way].state, *diffWords, totalDiffWords);
+//                     fprintf(stderr, "Data Orig (Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u"
+//                             "\n New (Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u)\n", 
+//                             0, cache->sets[set].blocks[way].data_orig[0], 2, cache->sets[set].blocks[way].data_orig[2], 4, cache->sets[set].blocks[way].data_orig[6]
+//                             0, buf_curr_evicted[0], 3, buf_curr_evicted[3]);
+                     
+                 }
+//                 else
+//                     fprintf(stderr, "No Writes VirAddr:%p\n", cache->sets[set].blocks[way].vtl_addr); 
+                 if((totalDiffWords%1000) < 8 && *diffWords != 0){
+                        m2s_dump_brief_summary(stderr);
+                 }
+                
+                if ((int)(mem_lines_wear_dist[(cache->sets[set].blocks[way].vtl_addr) >> 6]) + *diffWords > 0xFF){
+                    mem_lines_wear_dist[(cache->sets[set].blocks[way].vtl_addr) >> 6] = 0xFF;
+                }
+                else
+                {
+                    mem_lines_wear_dist[(cache->sets[set].blocks[way].vtl_addr) >> 6] += *diffWords;
+                }
+                
+            }
+            
+            
+            /************/
+            //fprintf(stderr, "Old data V1 Buf[%d]:%u Buf[%d]:%u", 13, cache->sets[set].blocks[way].data_orig[13], 14, cache->sets[set].blocks[way].data_orig[14]);
+            //mem_read_old_data(g_mem, vtl_addr, 64, buf_curr_evicted);
+            //fprintf(stderr, "Old data V2 Buf[%d]:%u Buf[%d]:%u", 13, buf_curr_evicted[13], 14, buf_curr_evicted[14]);
+            /**********/
+//            fprintf(stderr,"Adding new address to cache: %p\n", vtl_addr);
+            cache->sets[set].blocks[way].vtl_addr = vtl_addr;
+            cache->sets[set].blocks[way].state_vishesh = used;
+            if(write){
+                cache->sets[set].blocks[way].flag_write = 1;
+            }
+            else {
+                cache->sets[set].blocks[way].flag_write = 0;
+            }
+            //fprintf(stderr, "Orig Data Addr: %u Buf[%d]:%u Buf[%d]:%u\n", vtl_addr, 0, cache->sets[set].blocks[way].data_orig[0], 3, cache->sets[set].blocks[way].data_orig[3]);
+        }
+        cache_update_waylist(&cache->sets[set], &cache->sets[set].blocks[way],
+                cache_waylist_head);
 
-		return way;
-	}
-	
-	/* Random replacement */
-	assert(cache->policy == cache_policy_random);
-	return random() % cache->assoc;
+        return way;
+    }
+
+    /* Random replacement */
+    assert(cache->policy == cache_policy_random);
+    return random() % cache->assoc;
 }
 
 

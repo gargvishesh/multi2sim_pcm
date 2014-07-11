@@ -90,6 +90,8 @@ struct x86_uop_t
 
 	/* For memory uops */
 	unsigned int phy_addr;  /* ... corresponding to 'uop->uinst->address' */
+        unsigned int vtl_addr;  /* ... corresponding to 'uop->uinst->address' */
+        
 
 	/* Cycles */
 	long long when;  /* cycle when ready */

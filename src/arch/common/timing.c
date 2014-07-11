@@ -21,12 +21,16 @@
 #include <lib/mhandle/mhandle.h>
 #include <lib/util/debug.h>
 #include <lib/util/timer.h>
+#include <math.h>
 
 #include "arch.h"
 #include "emu.h"
 #include "timing.h"
+#include "mem-system/cache.c"
 
-
+extern unsigned char *mem_lines_wear_dist;
+extern unsigned long long totalDiffWords;
+extern int MEM_LINES_COUNT;
 
 /*
  * Class 'Timing'
@@ -85,6 +89,24 @@ void TimingDumpSummary(Timing *self, FILE *f)
 	fprintf(f, "Frequency = %d [MHz]\n", timing->frequency);
 	fprintf(f, "Cycles = %lld\n", timing->cycle);
 	fprintf(f, "CyclesPerSecond = %.0f\n", cycles_per_sec);
+        
+
+        double squareSum = 0, sum = 0;
+        int i;
+        for (i = 0; i < MEM_LINES_COUNT; i++) {
+                if (mem_lines_wear_dist[i] > 0) {
+                    /************/
+                    //fprintf(f, "Addr:%d %d\n", i, mem_lines_wear_dist[i]);
+                    //mem_lines_wear_dist[i] = i;
+                    /***********/
+                    sum += mem_lines_wear_dist[i];
+                    squareSum += (mem_lines_wear_dist[i] * mem_lines_wear_dist[i]);
+                }
+        }
+        double mean = sum/MEM_LINES_COUNT;
+        double variance = (squareSum + MEM_LINES_COUNT*(mean*mean) - 2*mean*sum)/MEM_LINES_COUNT;
+        fprintf(f, "Wear Distribution (Standard Deviation) = %.0f\n", sqrt(variance));
+        fprintf(f, "Total Writes (In 8 Byte Words) = %llu\n", totalDiffWords);
 }
 
 

@@ -243,6 +243,10 @@ struct mod_t *mod_stack_set_peer(struct mod_t *peer, int state);
 long long mod_access(struct mod_t *mod, enum mod_access_kind_t access_kind, 
 	unsigned int addr, int *witness_ptr, struct linked_list_t *event_queue,
 	void *event_queue_item, struct mod_client_info_t *client_info);
+long long mod_access_vishesh(struct mod_t *mod, enum mod_access_kind_t access_kind, 
+	unsigned int addr, unsigned int vtl_addr, int *witness_ptr, struct linked_list_t *event_queue,
+	void *event_queue_item, struct mod_client_info_t *client_info);
+
 int mod_can_access(struct mod_t *mod, unsigned int addr);
 
 int mod_find_block(struct mod_t *mod, unsigned int addr, int *set_ptr, int *way_ptr, 

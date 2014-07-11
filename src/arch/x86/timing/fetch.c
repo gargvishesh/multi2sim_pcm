@@ -152,10 +152,12 @@ static struct x86_uop_t *X86ThreadFetchInst(X86Thread *self, int fetch_trace_cac
 		x86_uop_count_deps(uop);
 
 		/* Calculate physical address of a memory access */
-		if (uop->flags & X86_UINST_MEM)
+		if (uop->flags & X86_UINST_MEM){
 			uop->phy_addr = mmu_translate(self->ctx->address_space_index,
 				uinst->address);
-
+                        uop->vtl_addr = uinst->address;
+                }
+                
 		/* Trace */
 		if (x86_tracing())
 		{
@@ -304,8 +306,8 @@ static void X86ThreadFetch(X86Thread *self)
 		phy_addr = mmu_translate(self->ctx->address_space_index, self->fetch_neip);
 		self->fetch_block = block;
 		self->fetch_address = phy_addr;
-		self->fetch_access = mod_access(self->inst_mod,
-			mod_access_load, phy_addr, NULL, NULL, NULL, NULL);
+		self->fetch_access = mod_access_vishesh(self->inst_mod,
+			mod_access_load, phy_addr, self->fetch_neip, NULL, NULL, NULL, NULL);
 		self->btb_reads++;
 
 		/* MMU statistics */

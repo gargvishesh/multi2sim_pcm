@@ -42,6 +42,12 @@ enum cache_block_state_t
 	cache_block_shared
 };
 
+enum cache_block_state_vishesh_t
+{
+    unused = 0,
+    used = 1
+};
+
 struct cache_block_t
 {
 	struct cache_block_t *way_next;
@@ -51,8 +57,12 @@ struct cache_block_t
 	int transient_tag;
 	int way;
 	int prefetched;
+        unsigned char data_orig[64];
+        unsigned int vtl_addr;
+        char flag_write;
 
 	enum cache_block_state_t state;
+        enum cache_block_state_vishesh_t state_vishesh;
 };
 
 struct cache_set_t
@@ -91,7 +101,7 @@ void cache_set_block(struct cache_t *cache, int set, int way, int tag, int state
 void cache_get_block(struct cache_t *cache, int set, int way, int *tag_ptr, int *state_ptr);
 
 void cache_access_block(struct cache_t *cache, int set, int way);
-int cache_replace_block(struct cache_t *cache, int set);
+int cache_replace_block(struct cache_t *cache, int set, unsigned int addr, int *diffWords, int write);
 void cache_set_transient_tag(struct cache_t *cache, int set, int way, int tag);
 
 

@@ -48,11 +48,33 @@ struct mod_stack_t *mod_stack_create(long long id, struct mod_t *mod,
 	stack->way = -1;
 	stack->set = -1;
 	stack->tag = -1;
+        stack->vtl_addr = 0xFFFFFFFF;
 
 	/* Return */
 	return stack;
 }
+struct mod_stack_t *mod_stack_create_vishesh(long long id, struct mod_t *mod,
+	unsigned int addr, unsigned int vtl_addr, int ret_event, struct mod_stack_t *ret_stack)
+{
+	struct mod_stack_t *stack;
 
+	/* Initialize */
+	stack = xcalloc(1, sizeof(struct mod_stack_t));
+	stack->id = id;
+	stack->mod = mod;
+	stack->addr = addr;
+	stack->ret_event = ret_event;
+	stack->ret_stack = ret_stack;
+	if (ret_stack != NULL)
+		stack->client_info = ret_stack->client_info;
+	stack->way = -1;
+	stack->set = -1;
+	stack->tag = -1;
+        stack->vtl_addr = vtl_addr;
+
+	/* Return */
+	return stack;
+}
 
 void mod_stack_return(struct mod_stack_t *stack)
 {

@@ -16883,7 +16883,7 @@ rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
 ###############
 
 debug=false
-CFLAGS="-msse2 -O3 -std=gnu99 -DNDEBUG"
+CFLAGS="-O3 -std=gnu99 -DNDEBUG"
 # Check whether --enable-debug was given.
 if test "${enable_debug+set}" = set; then :
   enableval=$enable_debug;

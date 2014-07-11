@@ -25,14 +25,14 @@
 
 #include "memory.h"
 
-
+struct mem_t *g_mem;
 /* Total space allocated for memory pages */
 unsigned long mem_mapped_space = 0;
 unsigned long mem_max_mapped_space = 0;
 
 /* Safe mode */
 int mem_safe_mode = 1;
-
+int g_count;
 
 /* Return mem page corresponding to an address. */
 struct mem_page_t *mem_page_get(struct mem_t *mem, unsigned int addr)
@@ -41,6 +41,7 @@ struct mem_page_t *mem_page_get(struct mem_t *mem, unsigned int addr)
 	struct mem_page_t *prev, *page;
 
 	tag = addr & ~(MEM_PAGE_SIZE - 1);
+        //fprintf(stderr, "mem_page_get tag: %u\n", tag);
 	index = (addr >> MEM_LOG_PAGE_SIZE) % MEM_PAGE_COUNT;
 	page = mem->pages[index];
 	prev = NULL;
@@ -231,7 +232,7 @@ void *mem_get_buffer(struct mem_t *mem, unsigned int addr, int size,
 	
 	/* Allocate and initialize page data if it does not exist yet. */
 	if (!page->data)
-		page->data = xcalloc(1, MEM_PAGE_SIZE);
+		page->data = xcalloc(1, MEM_PAGE_SIZE_FOR_OLD_BACKUP);
 	
 	/* Return pointer to page data */
 	return page->data + offset;
@@ -244,8 +245,17 @@ static void mem_access_page_boundary(struct mem_t *mem, unsigned int addr,
 {
 	struct mem_page_t *page;
 	unsigned int offset;
-
-	/* Find memory page and compute offset. */
+        
+        /*Vishesh: Request to read old data*/
+        char old_data_flag = 0;
+        if (access == mem_access_old_data){
+            old_data_flag = 1;
+            access = mem_access_read;
+        }
+        //fprintf(stderr, "Page Access [Addr: %u Access Type: %d Size: %d Buf[0]: %llu]\n", addr, access, size, ((unsigned long long*)buf)[0]);/* Find memory page and compute offset. */
+        //if(access == mem_access_init){
+          //  fprintf(stderr, "mem_access_init\n");
+        //}
 	page = mem_page_get(mem, addr);
 	offset = addr & (MEM_PAGE_SIZE - 1);
 	assert(offset + size <= MEM_PAGE_SIZE);
@@ -254,8 +264,11 @@ static void mem_access_page_boundary(struct mem_t *mem, unsigned int addr,
 	 * or create page with full privileges for writes in unsafe mode. */
 	if (!page)
 	{
-		if (mem->safe)
-			fatal("illegal access at 0x%x: page not allocated", addr);
+                //fprintf(stderr, "Page Not Allocated Addr: %u\n", addr);
+		if (mem->safe){
+			//fatal("illegal access at 0x%x: page not allocated", addr);
+                    fprintf(stderr, "illegal access at 0x%x\n", addr);
+                }
 		if (access == mem_access_read || access == mem_access_exec)
 		{
 			memset(buf, 0, size);
@@ -282,8 +295,18 @@ static void mem_access_page_boundary(struct mem_t *mem, unsigned int addr,
 	/* Read/execute access */
 	if (access == mem_access_read || access == mem_access_exec)
 	{
-		if (page->data)
-			memcpy(buf, page->data + offset, size);
+		if (page->data){
+                    if(old_data_flag == 0){
+                        memcpy(buf, page->data + offset, size);
+                    }
+                    else{
+                        memcpy(buf, page->data +  MEM_PAGE_SIZE + offset, size);
+                        /*Old data read, next time, old data should reflect current data so as not to count the writes "twice" for a page once 
+                         written, then read , and read in again after eviction*/
+                        memcpy(page->data +  MEM_PAGE_SIZE + offset, page->data + offset, size);
+                    }
+                }
+			
 		else
 			memset(buf, 0, size);
 		return;
@@ -293,7 +316,15 @@ static void mem_access_page_boundary(struct mem_t *mem, unsigned int addr,
 	if (access == mem_access_write || access == mem_access_init)
 	{
 		if (!page->data)
-			page->data = xcalloc(1, MEM_PAGE_SIZE);
+			page->data = xcalloc(1, MEM_PAGE_SIZE_FOR_OLD_BACKUP);
+                /*Vishesh: Take backup of original in the additional space in allocated page*/
+                if(access == mem_access_write){
+                    memcpy(page->data + MEM_PAGE_SIZE + offset , page->data + offset, size); 
+                }
+                else{
+                    memcpy(page->data + MEM_PAGE_SIZE + offset , buf, size); 
+                }
+                    
 		memcpy(page->data + offset, buf, size);
 		return;
 	}
@@ -327,12 +358,30 @@ void mem_access(struct mem_t *mem, unsigned int addr, int size, void *buf,
 
 void mem_read(struct mem_t *mem, unsigned int addr, int size, void *buf)
 {
-	mem_access(mem, addr, size, buf, mem_access_read);
+    g_mem = mem;
+    //fprintf(stderr, "mem_read Addr: %u Alligned Addr: %u, Size: %d\n", addr, addr & ~63, size);
+    mem_access(mem, addr, size, buf, mem_access_read);
+}
+
+void mem_read_old_data(struct mem_t *mem, unsigned int addr, int size, void *buf)
+{
+    g_mem = mem;
+    //fprintf(stderr, "mem_read_old_data Addr: %u Alligned Addr: %u, Size: %d\n", addr, addr & ~63, size);
+    mem_access(mem, addr, size, buf, mem_access_old_data);
 }
 
 
 void mem_write(struct mem_t *mem, unsigned int addr, int size, void *buf)
 {
+    int i;
+    //fprintf(stderr, "mem_write Addr: %p Alligned Addr: %p, Size: %d\n", addr, addr & ~63, size);
+    for(i=0; i<size; i++){
+    //fprintf(stderr, " Buf[%d]: %u\n", i, ((unsigned char*)(buf))[i]);
+    }
+    //if(size == 4 && ((char*)buf)[0] == 0xFF && ((char*)buf)[1] == 0xFF && ((char*)buf)[2] == 0xFF && ((char*)buf)[3] == 0xFF) {
+    //    fprintf(stderr, "Count: %d\n", ++g_count);
+    //}
+    
 	mem_access(mem, addr, size, buf, mem_access_write);
 }
 

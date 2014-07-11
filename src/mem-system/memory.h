@@ -24,6 +24,7 @@
 #define MEM_LOG_PAGE_SIZE  12
 #define MEM_PAGE_SHIFT  MEM_LOG_PAGE_SIZE
 #define MEM_PAGE_SIZE  (1 << MEM_LOG_PAGE_SIZE)
+#define MEM_PAGE_SIZE_FOR_OLD_BACKUP (2*MEM_PAGE_SIZE)
 #define MEM_PAGE_MASK  (~(MEM_PAGE_SIZE - 1))
 #define MEM_PAGE_COUNT  1024
 
@@ -34,7 +35,8 @@ enum mem_access_t
 	mem_access_write  = 0x02,
 	mem_access_exec   = 0x04,
 	mem_access_init   = 0x08,
-	mem_access_modif  = 0x10
+	mem_access_modif  = 0x10,
+        mem_access_old_data = 0x20
 };
 
 /* Safe mode */
@@ -92,6 +94,7 @@ void mem_copy(struct mem_t *mem, unsigned int dest, unsigned int src, int size);
 
 void mem_access(struct mem_t *mem, unsigned int addr, int size, void *buf, enum mem_access_t access);
 void mem_read(struct mem_t *mem, unsigned int addr, int size, void *buf);
+void mem_read_old_data(struct mem_t *mem, unsigned int addr, int size, void *buf);
 void mem_write(struct mem_t *mem, unsigned int addr, int size, void *buf);
 
 void mem_zero(struct mem_t *mem, unsigned int addr, int size);

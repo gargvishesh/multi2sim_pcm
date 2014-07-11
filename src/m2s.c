@@ -144,6 +144,10 @@ static volatile int m2s_signal_received;  /* Signal received by handler (0 = non
 
 static X86Cpu *x86_cpu;
 
+unsigned char *mem_lines_wear_dist;
+#define MB (1024*1024)
+int MEM_LINES_COUNT =  (64 * MB); // 4GB address space / 64B line size
+extern unsigned long long totalDiffWords;
 
 static char *m2s_help =
 		"Syntax:\n"
@@ -1688,6 +1692,10 @@ static void m2s_dump(FILE *f)
 {
 	arch_for_each((arch_callback_func_t) arch_dump, f);
 }
+void m2s_dump_brief_summary(FILE *f){
+    fprintf(f, "Cycles = %lld\n", esim_cycle());
+    fprintf(f, "Total Writes (In 8 Byte Words) = %llu\n", totalDiffWords);
+}
 
 
 static void m2s_dump_summary(FILE *f)
@@ -1896,6 +1904,10 @@ int main(int argc, char **argv)
 
 	/* Read command line */
 	m2s_read_command_line(&argc, argv);
+        
+        /*Will keep track of #writes to a particular line in memory*/
+        mem_lines_wear_dist = (unsigned char*)xmalloc(MEM_LINES_COUNT);
+	
 
 	/* x86 disassembler tool */
 	if (*x86_disasm_file_name)
@@ -2115,6 +2127,8 @@ int main(int argc, char **argv)
 	esim_done();
 	trace_done();
 	debug_done();
+        free(mem_lines_wear_dist);
+        
 	mhandle_done();
 
 	/* End */
