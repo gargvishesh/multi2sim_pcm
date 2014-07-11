@@ -318,14 +318,15 @@ static void mem_access_page_boundary(struct mem_t *mem, unsigned int addr,
 		if (!page->data)
 			page->data = xcalloc(1, MEM_PAGE_SIZE_FOR_OLD_BACKUP);
                 /*Vishesh: Take backup of original in the additional space in allocated page*/
-                if(access == mem_access_write){
-                    memcpy(page->data + MEM_PAGE_SIZE + offset , page->data + offset, size); 
-                }
-                else{
-                    memcpy(page->data + MEM_PAGE_SIZE + offset , buf, size); 
-                }
-                    
-		memcpy(page->data + offset, buf, size);
+                
+                /***Change of Plan***. Only take backup of original when read_old_data is 
+                 * called. That means when the data is evicted to memory, only then we 
+                 * take A snapshot of what is current. 
+                 * Backup for each write can be fatal, such as cases of set and 
+                 * reset where for set, 
+                 * 0 will be written as old; and for next reset, 1 will be written as old.
+                 * We only wanted 0 to be written however*/
+                memcpy(page->data + offset, buf, size);
 		return;
 	}
 

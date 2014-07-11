@@ -355,6 +355,11 @@ int cache_replace_block(struct cache_t *cache, int set, unsigned int vtl_addr, i
             unsigned char buf_curr_evicted[64];
             //fprintf(stderr, "Block Set: %u Way: %u State: %d\n", set, way, cache->sets[set].blocks[way].state);
             if(cache->sets[set].blocks[way].state == cache_block_modified){
+                
+                /*We shifted read_old_data also here because sometimes, replace comes midway between the data being semi-updated. So old for the part of the line left wasn't "really" old. 
+                 In the new modifications for write where we backup current data to old data page area (only when read_old_data req comes), this placement doesn't matter.
+                 This is because no dynamic updates to old data section are taking place "during" the update request now*/
+                
                 mem_read_old_data(g_mem, cache->sets[set].blocks[way].vtl_addr, 64, cache->sets[set].blocks[way].data_orig);
                 mem_read(g_mem, cache->sets[set].blocks[way].vtl_addr, 64, buf_curr_evicted);
                  *diffWords = cmplinewords(cache->sets[set].blocks[way].data_orig, (char*)buf_curr_evicted, cache->sets[set].blocks[way].vtl_addr);
