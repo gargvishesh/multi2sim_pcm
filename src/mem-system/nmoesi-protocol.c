@@ -1146,6 +1146,7 @@ void mod_handler_nmoesi_find_and_lock(int event, void *data)
 				stack->way = cache_replace_block(mod->cache, stack->set, stack->vtl_addr, &diffWords, stack->write);
 			}
 		}
+                stack->diffWords = diffWords;
 		assert(stack->way >= 0);
 
 		/* If directory entry is locked and the call to FIND_AND_LOCK is not
@@ -1221,6 +1222,7 @@ void mod_handler_nmoesi_find_and_lock(int event, void *data)
 				EV_MOD_NMOESI_FIND_AND_LOCK_FINISH, stack);
 			new_stack->set = stack->set;
 			new_stack->way = stack->way;
+                        new_stack->diffWords = stack->diffWords;
 			esim_schedule_event(EV_MOD_NMOESI_EVICT, new_stack, 0);
 			return;
 		}
@@ -1321,6 +1323,7 @@ void mod_handler_nmoesi_evict(int event, void *data)
 		new_stack->except_mod = NULL;
 		new_stack->set = stack->set;
 		new_stack->way = stack->way;
+                new_stack->diffWords = stack->diffWords;
 		esim_schedule_event(EV_MOD_NMOESI_INVALIDATE, new_stack, 0);
 		return;
 	}
@@ -1423,6 +1426,7 @@ void mod_handler_nmoesi_evict(int event, void *data)
 		new_stack->blocking = 0;
 		new_stack->write = 1;
 		new_stack->retry = 0;
+                new_stack->diffWords = stack->diffWords;
 		esim_schedule_event(EV_MOD_NMOESI_FIND_AND_LOCK, new_stack, 0);
 		return;
 	}
@@ -1497,9 +1501,9 @@ void mod_handler_nmoesi_evict(int event, void *data)
 		dir = target_mod->dir;
 		dir_entry_unlock(dir, stack->set, stack->way);
 
-		esim_schedule_event(EV_MOD_NMOESI_EVICT_REPLY, stack, target_mod->latency);
-		return;
-	}
+		esim_schedule_event(EV_MOD_NMOESI_EVICT_REPLY, stack, target_mod->latency + stack->diffWords*450); //450 cycles is PCM latency per write word
+                return;
+        }
 
 	if (event == EV_MOD_NMOESI_EVICT_PROCESS_NONCOHERENT)
 	{
