@@ -1694,7 +1694,7 @@ static void m2s_dump(FILE *f)
 }
 void m2s_dump_brief_summary(FILE *f){
     fprintf(f, "Cycles = %lld\n", esim_cycle());
-    fprintf(f, "Total Writes (In 8 Byte Words) = %llu\n", totalDiffWords);
+    fprintf(f, "Total Writes (In 4 Byte Words) = %llu\n", totalDiffWords);
 }
 
 

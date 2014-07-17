@@ -478,30 +478,6 @@ void mod_handler_nmoesi_store(int event, void *data)
 		/* Update tag/state and unlock */
 		cache_set_block(mod->cache, stack->set, stack->way,
 			stack->tag, cache_block_modified);
-                /*Vishesh: To make it write-through*/
-                if(strcmp(mod->cache->name,"x86-l1D") == 0){
-                    int cache_hit, cache_set, cache_way, cache_tag, cache_state;
-                    /*L2-cache*/
-                    cache_hit = mod_find_block(ptr_l2_mod, stack->addr, &cache_set,
-			&cache_way, &cache_tag, &cache_state);
-                    if(cache_hit){
-                         cache_set_block(ptr_l2_mod->cache, cache_set, cache_way,
-			cache_tag, cache_block_modified);
-                    }else
-                    {
-                        fprintf(stderr, "FATAL L1 hit but L2 Miss!\n");
-                    }
-                    cache_hit = mod_find_block(ptr_dram_mod, stack->addr, &cache_set,
-			&cache_way, &cache_tag, &cache_state);
-                    if(cache_hit){
-                         cache_set_block(ptr_dram_mod->cache, cache_set, cache_way,
-			cache_tag, cache_block_modified);
-                         
-                    }else
-                    {
-                        fprintf(stderr, "FATAL L1 hit but DRAM Miss!");
-                    }
-                }
                 dir_entry_unlock(mod->dir, stack->set, stack->way);
 
 		/* Impose the access latency before continuing */
@@ -2486,11 +2462,6 @@ void mod_handler_nmoesi_write_request(int event, void *data)
 		/* Set state to exclusive */
 		cache_set_block(target_mod->cache, stack->set, stack->way,
 			stack->tag, cache_block_exclusive);
-                
-                if(stack->write)
-                    cache_set_block(target_mod->cache, stack->set, stack->way,
-			stack->tag, cache_block_modified);
-                
 
 		/* If blocks were sent directly to the peer, the reply size would
 		 * have been decreased.  Based on the final size, we can tell whether

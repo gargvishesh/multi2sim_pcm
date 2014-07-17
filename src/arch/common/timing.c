@@ -106,7 +106,7 @@ void TimingDumpSummary(Timing *self, FILE *f)
         double mean = sum/MEM_LINES_COUNT;
         double variance = (squareSum + MEM_LINES_COUNT*(mean*mean) - 2*mean*sum)/MEM_LINES_COUNT;
         fprintf(f, "Wear Distribution (Standard Deviation) = %.0f\n", sqrt(variance));
-        fprintf(f, "Total Writes (In 8 Byte Words) = %llu\n", totalDiffWords);
+        fprintf(f, "Total Writes (In 4 Byte Words) = %llu\n", totalDiffWords);
 }
 
 
