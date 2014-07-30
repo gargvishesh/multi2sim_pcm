@@ -72,6 +72,8 @@
 #include <sys/time.h>
 #include <visual/common/visual.h>
 
+#include "arch/common/timing.c"
+
 
 static char *visual_file_name = "";
 static char *ctx_config_file_name = "";
@@ -144,10 +146,34 @@ static volatile int m2s_signal_received;  /* Signal received by handler (0 = non
 
 static X86Cpu *x86_cpu;
 
-unsigned char *mem_lines_wear_dist;
+unsigned short *mem_lines_wear_dist;
+unsigned int *page_4mb_wear_dist;
+
+int numbits[256];
+
+void init_numbits() {
+    for (int ii = 0; ii < 256; ii++) {
+        int nn = 0;
+        nn += ((ii & 1) != 0);
+        nn += ((ii & 2) != 0);
+        nn += ((ii & 4) != 0);
+        nn += ((ii & 8) != 0);
+        nn += ((ii & 0x10) != 0);
+        nn += ((ii & 0x20) != 0);
+        nn += ((ii & 0x40) != 0);
+        nn += ((ii & 0x80) != 0);
+        numbits[ii] = nn;
+    }
+}
+
+
 #define MB (1024*1024)
-int MEM_LINES_COUNT =  (64 * MB); // 4GB address space / 64B line size
+int MEM_LINES_COUNT =  (128 * MB); // 4GB address space / 64B line size * 2 bytes per line
+int PAGE_COUNT = 1024; //1GB scratch space by 4MB page size
+int WORDS_IN_A_LINE = (8) ;
+
 extern unsigned long long totalDiffWords;
+extern unsigned int *page_4mb_wear_dist;
 
 static char *m2s_help =
 		"Syntax:\n"
@@ -1315,6 +1341,7 @@ static void m2s_read_command_line(int *argc_ptr, char **argv)
 		{
 			m2s_need_argument(argc, argv, argi);
 			mem_config_file_name = argv[++argi];
+                        fprintf(stderr, "Mem Config Filename:%s\n", mem_config_file_name);
 			continue;
 		}
 
@@ -1694,7 +1721,14 @@ static void m2s_dump(FILE *f)
 }
 void m2s_dump_brief_summary(FILE *f){
     fprintf(f, "Cycles = %lld\n", esim_cycle());
-    fprintf(f, "Total Writes (In 4 Byte Words) = %llu\n", totalDiffWords);
+    fprintf(f, "Total Writes (Words) = %llu\n", totalDiffWords);
+    fprintf(f, "Total Writes (Bytes) = %llu\n", totalDiffBytes);
+    fprintf(f, "Total Writes (Bits) = %llu\n", totalDiffBits);
+    fprintf(stderr, "Page_Wise_Wear_Distribution: ");
+    for (int i = 0; i < PAGE_COUNT; i++) {
+        fprintf(stderr, "%u ", page_4mb_wear_dist[i]);
+    }
+    fprintf(stderr, "\n");
 }
 
 
@@ -1906,7 +1940,9 @@ int main(int argc, char **argv)
 	m2s_read_command_line(&argc, argv);
         
         /*Will keep track of #writes to a particular line in memory*/
-        mem_lines_wear_dist = (unsigned char*)xmalloc(MEM_LINES_COUNT);
+        mem_lines_wear_dist = (unsigned short*)xmalloc(MEM_LINES_COUNT);
+        page_4mb_wear_dist = (unsigned int*)xmalloc(PAGE_COUNT*sizeof(int));
+        init_numbits();
 	
 
 	/* x86 disassembler tool */
@@ -2128,6 +2164,7 @@ int main(int argc, char **argv)
 	trace_done();
 	debug_done();
         free(mem_lines_wear_dist);
+        free(page_4mb_wear_dist);
         
 	mhandle_done();
 

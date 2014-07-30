@@ -28,9 +28,15 @@
 #include "timing.h"
 #include "mem-system/cache.c"
 
-extern unsigned char *mem_lines_wear_dist;
+extern unsigned short *mem_lines_wear_dist;
+extern unsigned int *page_4mb_wear_dist;
+
 extern unsigned long long totalDiffWords;
+extern unsigned long long totalDiffBytes;
+extern unsigned long long totalDiffBits;
+
 extern int MEM_LINES_COUNT;
+extern int PAGE_COUNT;
 
 /*
  * Class 'Timing'
@@ -92,21 +98,33 @@ void TimingDumpSummary(Timing *self, FILE *f)
         
 
         double squareSum = 0, sum = 0;
+        long long maxWrites = 0;
         int i;
-        for (i = 0; i < MEM_LINES_COUNT; i++) {
-                if (mem_lines_wear_dist[i] > 0) {
-                    /************/
-                    //fprintf(f, "Addr:%d %d\n", i, mem_lines_wear_dist[i]);
-                    //mem_lines_wear_dist[i] = i;
-                    /***********/
-                    sum += mem_lines_wear_dist[i];
-                    squareSum += (mem_lines_wear_dist[i] * mem_lines_wear_dist[i]);
-                }
+        for (i = 0; i < MEM_LINES_COUNT / sizeof (short); i++) {
+        /************/
+        //fprintf(f, "Addr:%d %d\n", i, mem_lines_wear_dist[i]);
+        //mem_lines_wear_dist[i] = i;
+        /***********/
+            if (mem_lines_wear_dist[i] > maxWrites) {
+                maxWrites = mem_lines_wear_dist[i];
+            }
+            sum += mem_lines_wear_dist[i];
+            squareSum += (mem_lines_wear_dist[i] * mem_lines_wear_dist[i]);
+
         }
-        double mean = sum/MEM_LINES_COUNT;
-        double variance = (squareSum + MEM_LINES_COUNT*(mean*mean) - 2*mean*sum)/MEM_LINES_COUNT;
-        fprintf(f, "Wear Distribution (Standard Deviation) = %.0f\n", sqrt(variance));
-        fprintf(f, "Total Writes (In 4 Byte Words) = %llu\n", totalDiffWords);
+        fprintf(stderr, "Page_Wise_Wear_Distribution: ");
+        for (i = 0; i < PAGE_COUNT; i++) {
+            fprintf(stderr, "%u ", page_4mb_wear_dist[i]);
+        }
+        fprintf(stderr, "\n");
+        
+        double mean = (double)sum/(double)MEM_LINES_COUNT;
+        double variance = (squareSum + (double)MEM_LINES_COUNT*(mean*mean) - 2*mean*sum)/(double)MEM_LINES_COUNT;
+        fprintf(f, "Wear Distribution (Standard Deviation among Cache Line Writes) = %.0f\n", sqrt(variance));
+        fprintf(f, "Total Writes (Words) = %llu\n", totalDiffWords);
+        fprintf(f, "Total Writes (Bytes) = %llu\n", totalDiffBytes);
+        fprintf(f, "Total Writes (Bits) = %llu\n", totalDiffBits);
+        fprintf(f, "Max Writes (In 4 Byte Words Per Cache Line) = %llu\n", maxWrites);
 }
 
 

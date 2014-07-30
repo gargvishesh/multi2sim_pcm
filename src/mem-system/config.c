@@ -1333,6 +1333,10 @@ static void mem_config_calculate_sub_block_sizes(void)
 			mod->name, mod->dir_num_sets, mod->dir_assoc, num_nodes,
 			mod->dir_num_sets, mod->dir_assoc, linked_list_count(mod->high_mod_list),
 			mod->dir_size, mod->num_sub_blocks);
+		fprintf(stderr, "\t%s - %dx%dx%d (%dx%dx%d effective) - %d entries, %d sub-blocks\n",
+			mod->name, mod->dir_num_sets, mod->dir_assoc, num_nodes,
+			mod->dir_num_sets, mod->dir_assoc, linked_list_count(mod->high_mod_list),
+			mod->dir_size, mod->num_sub_blocks);
                 if(strcmp(mod->cache->name, "x86-l2") == 0){
                     ptr_l2_mod = mod;
                 }

@@ -33,7 +33,14 @@
  * Public Variables
  */
 extern struct mem_t  *g_mem;
-extern unsigned char *mem_lines_wear_dist;
+extern unsigned short *mem_lines_wear_dist;
+extern unsigned int *page_4mb_wear_dist;
+extern int numbits[256];
+
+#define MONITOR_ADDR_START 0
+#define MONITOR_ADDR_END 0xFFFFFFFF
+#define MONITOR_PAGE_SIZE (4*1024*1024)
+
 extern void m2s_dump_brief_summary(FILE* f);
 
 struct str_map_t cache_policy_map =
@@ -58,6 +65,8 @@ struct str_map_t cache_block_state_map =
 };
 
 unsigned long long totalDiffWords;
+unsigned long long totalDiffBytes;
+unsigned long long totalDiffBits;
 
 
 /*
@@ -283,23 +292,35 @@ void cache_access_block(struct cache_t *cache, int set, int way)
 			cache_waylist_head);
 }
 
-int cmplinewords(char *from_addr, char *to_addr, unsigned int addr)
-        {
-                unsigned int *fp = (unsigned int *)from_addr;
-                unsigned int *tp = (unsigned int *)to_addr;
-                //int *fp = (int *)from_addr;
-                //int *tp = (int *)to_addr;
-                int sum= 0;
-                for (int ii=0; ii<(int)(64/sizeof(unsigned int)); ii++) {
+int cmplinewords(char *from_addr, char *to_addr, unsigned int addr, unsigned char* diffBytes, unsigned int* diffBits) {
+    unsigned int *fp = (unsigned int *) from_addr;
+    unsigned int *tp = (unsigned int *) to_addr;
+    unsigned char *fp_char, *tp_char;
+    //int *fp = (int *)from_addr;
+    //int *tp = (int *)to_addr;
+    int sum = 0;
+    *diffBytes = 0;
+    *diffBits = 0;
+    
+    for (int ii = 0; ii < (int) (64 / sizeof (unsigned int)); ii++) {
 #if 0
-                        sum += (fp[ii] != tp[ii]);
+        sum += (fp[ii] != tp[ii]);
 #else
-                        if (fp[ii] != tp[ii]){
-                            //fprintf(stderr, "Diff Addr Evicted Word No:%u Old:%u New:%u\n", ii, fp[ii], tp[ii]);
-                            sum ++;
-                        }
-#endif
+        if (fp[ii] != tp[ii]) {
+            //fprintf(stderr, "Diff Addr Evicted Word No:%u Old:%u New:%u\n", ii, fp[ii], tp[ii]);
+            sum++;
+            fp_char = (unsigned char*) fp;
+            tp_char = (unsigned char*) tp;
+            for (int jj = 0; jj<sizeof (unsigned int) / sizeof (char); jj++) {
+                if (fp_char[jj] != tp[jj]) {
+                    (*diffBytes)++;
+                    (*diffBits) += numbits[(fp_char[jj] ^ tp_char[jj])];
+                    //fprintf(stderr, "Adding [fp:%u tp:%u diffbits[%u]\n", fp_char[jj], tp_char[jj], *diffBits);
                 }
+            }
+        }
+#endif
+    }
 #if 0
                 if (sum>0)
                 {
@@ -362,24 +383,39 @@ int cache_replace_block(struct cache_t *cache, int set, unsigned int vtl_addr, i
                 
                 mem_read_old_data(g_mem, cache->sets[set].blocks[way].vtl_addr, 64, cache->sets[set].blocks[way].data_orig);
                 mem_read(g_mem, cache->sets[set].blocks[way].vtl_addr, 64, buf_curr_evicted);
-                 *diffWords = cmplinewords(cache->sets[set].blocks[way].data_orig, (char*)buf_curr_evicted, cache->sets[set].blocks[way].vtl_addr);
+                unsigned char diffBytes;
+                unsigned int diffBits;
+                 *diffWords = cmplinewords(cache->sets[set].blocks[way].data_orig, (char*)buf_curr_evicted, cache->sets[set].blocks[way].vtl_addr, &diffBytes, &diffBits);
                  totalDiffWords += *diffWords;
+                 totalDiffBytes += diffBytes;
+                 totalDiffBits += diffBits;
+                 
                  if(*diffWords){
 //                     fprintf(stderr, "Writes Flag:%d Addr:%p Set:%d Way:%d State:%d DiffWords:%d totalDiffWords:%u\n", cache->sets[set].blocks[way].flag_write, cache->sets[set].blocks[way].vtl_addr, set, way, cache->sets[set].blocks[way].state, *diffWords, totalDiffWords);
-//                     fprintf(stderr, "Data Orig (Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u"
+//                     fprintf(stderr, "Data Orig (Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u(vtl_addr- MONITOR_ADDR_START)/MONITOR_PAGE_SIZE"
 //                             "\n New (Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u)\n", 
 //                             0, cache->sets[set].blocks[way].data_orig[0], 2, cache->sets[set].blocks[way].data_orig[2], 4, cache->sets[set].blocks[way].data_orig[6]
 //                             0, buf_curr_evicted[0], 3, buf_curr_evicted[3]);
                      
                  }
+                 /***************NOTE: Custome code for PgsqlQuery16***********/
+                 /*************************************************************/
+                 //fprintf(stderr, "Vlt_Addr:%u\n", vtl_addr);
+                 //if(vtl_addr >= MONITOR_ADDR_START && vtl_addr <= MONITOR_ADDR_END){
+                     //fprintf(stderr, "Sending to index:%u", (vtl_addr- MONITOR_ADDR_START)/MONITOR_PAGE_SIZE);
+                     page_4mb_wear_dist[(vtl_addr- MONITOR_ADDR_START)/MONITOR_PAGE_SIZE] += *diffWords;
+                 //}
+                 
+                 /*************************************************************/
+                 /*************************************************************/
 //                 else
 //                     fprintf(stderr, "No Writes VirAddr:%p\n", cache->sets[set].blocks[way].vtl_addr); 
                  if((totalDiffWords%1000) < 8 && *diffWords != 0){
                         m2s_dump_brief_summary(stderr);
                  }
                 
-                if ((int)(mem_lines_wear_dist[(cache->sets[set].blocks[way].vtl_addr) >> 6]) + *diffWords > 0xFF){
-                    mem_lines_wear_dist[(cache->sets[set].blocks[way].vtl_addr) >> 6] = 0xFF;
+                if ((mem_lines_wear_dist[(cache->sets[set].blocks[way].vtl_addr) >> 6]) + *diffWords > 0xFFFF){
+                    mem_lines_wear_dist[(cache->sets[set].blocks[way].vtl_addr) >> 6] = 0xFFFF;
                 }
                 else
                 {
