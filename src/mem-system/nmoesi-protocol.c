@@ -1477,7 +1477,7 @@ void mod_handler_nmoesi_evict(int event, void *data)
 		dir = target_mod->dir;
 		dir_entry_unlock(dir, stack->set, stack->way);
 
-		esim_schedule_event(EV_MOD_NMOESI_EVICT_REPLY, stack, target_mod->latency + stack->diffWords*(450/2)); //450 cycles is PCM latency per write 8 byte word. We are using 4 byte words.
+		esim_schedule_event(EV_MOD_NMOESI_EVICT_REPLY, stack, target_mod->latency + stack->diffWords*(64)); //Earlier 450/2 cycles. Now calc by 4096/256 = 16 per byte. 64 for 4 byte word
                 return;
         }
 

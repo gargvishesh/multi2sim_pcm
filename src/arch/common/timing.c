@@ -29,14 +29,12 @@
 #include "mem-system/cache.c"
 
 extern unsigned short *mem_lines_wear_dist;
-extern unsigned int *page_4mb_wear_dist;
 
 extern unsigned long long totalDiffWords;
 extern unsigned long long totalDiffBytes;
 extern unsigned long long totalDiffBits;
 
-extern int MEM_LINES_COUNT;
-extern int PAGE_COUNT;
+extern const int MEM_LINES_COUNT;
 
 /*
  * Class 'Timing'
@@ -100,21 +98,21 @@ void TimingDumpSummary(Timing *self, FILE *f)
         double squareSum = 0, sum = 0;
         long long maxWrites = 0;
         int i;
-        for (i = 0; i < MEM_LINES_COUNT / sizeof (short); i++) {
+        fprintf(stderr, "Page_Wise_Wear_Distribution: ");
+        for (i = 0; i < MEM_LINES_COUNT; i++) {
         /************/
         //fprintf(f, "Addr:%d %d\n", i, mem_lines_wear_dist[i]);
         //mem_lines_wear_dist[i] = i;
         /***********/
+            if (mem_lines_wear_dist[i] > 32) {
+                fprintf(stderr, "%u ", mem_lines_wear_dist[i]);
+            }
             if (mem_lines_wear_dist[i] > maxWrites) {
                 maxWrites = mem_lines_wear_dist[i];
             }
             sum += mem_lines_wear_dist[i];
             squareSum += (mem_lines_wear_dist[i] * mem_lines_wear_dist[i]);
-
-        }
-        fprintf(stderr, "Page_Wise_Wear_Distribution: ");
-        for (i = 0; i < PAGE_COUNT; i++) {
-            fprintf(stderr, "%u ", page_4mb_wear_dist[i]);
+            mem_lines_wear_dist[i] = 0;
         }
         fprintf(stderr, "\n");
         

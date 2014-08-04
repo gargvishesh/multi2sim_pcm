@@ -47,7 +47,6 @@ enum cache_block_state_vishesh_t
     unused = 0,
     used = 1
 };
-
 struct cache_block_t
 {
 	struct cache_block_t *way_next;
@@ -57,7 +56,7 @@ struct cache_block_t
 	int transient_tag;
 	int way;
 	int prefetched;
-        unsigned char data_orig[64];
+        unsigned char data_orig[256];
         unsigned int vtl_addr;
         char flag_write;
 
