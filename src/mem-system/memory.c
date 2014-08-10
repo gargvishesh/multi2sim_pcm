@@ -251,6 +251,9 @@ static void mem_access_page_boundary(struct mem_t *mem, unsigned int addr,
         if (access == mem_access_old_data){
             old_data_flag = 1;
             access = mem_access_read;
+        }else if (access == mem_access_old_data_wo_update){
+            old_data_flag = 2;
+            access = mem_access_read;
         }
         //fprintf(stderr, "Page Access [Addr: %u Access Type: %d Size: %d Buf[0]: %llu]\n", addr, access, size, ((unsigned long long*)buf)[0]);/* Find memory page and compute offset. */
         //if(access == mem_access_init){
@@ -299,11 +302,14 @@ static void mem_access_page_boundary(struct mem_t *mem, unsigned int addr,
                     if(old_data_flag == 0){
                         memcpy(buf, page->data + offset, size);
                     }
-                    else{
+                    else if (old_data_flag == 1){
                         memcpy(buf, page->data +  MEM_PAGE_SIZE + offset, size);
                         /*Old data read, next time, old data should reflect current data so as not to count the writes "twice" for a page once 
                          written, then read , and read in again after eviction*/
                         memcpy(page->data +  MEM_PAGE_SIZE + offset, page->data + offset, size);
+                    }
+                    else{
+                        memcpy(buf, page->data +  MEM_PAGE_SIZE + offset, size);
                     }
                 }
 			
@@ -363,12 +369,21 @@ void mem_read(struct mem_t *mem, unsigned int addr, int size, void *buf)
     //fprintf(stderr, "mem_read Addr: %u Alligned Addr: %u, Size: %d\n", addr, addr & ~63, size);
     mem_access(mem, addr, size, buf, mem_access_read);
 }
-
+/*Read old data and replace it with new one to avoid redundant dirty counting*/
 void mem_read_old_data(struct mem_t *mem, unsigned int addr, int size, void *buf)
 {
     g_mem = mem;
     //fprintf(stderr, "mem_read_old_data Addr: %u Alligned Addr: %u, Size: %d\n", addr, addr & ~63, size);
     mem_access(mem, addr, size, buf, mem_access_old_data);
+}
+
+ /*Read old data just to check if the present entry is dirty. Used to decide entry to evict*/
+
+void mem_read_old_data_wo_update(struct mem_t *mem, unsigned int addr, int size, void *buf)
+{
+    g_mem = mem;
+    //fprintf(stderr, "mem_read_old_data Addr: %u Alligned Addr: %u, Size: %d\n", addr, addr & ~63, size);
+    mem_access(mem, addr, size, buf, mem_access_old_data_wo_update);
 }
 
 

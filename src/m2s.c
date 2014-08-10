@@ -152,6 +152,7 @@ static volatile int m2s_signal_received;  /* Signal received by handler (0 = non
 static X86Cpu *x86_cpu;
 
 unsigned short *mem_lines_wear_dist;
+unsigned long long global_delay_due_to_flushing;
 
 int numbits[256];
 
@@ -174,10 +175,16 @@ void init_numbits() {
 FILE *ipc;
 void shmem_init()
 {
+    if ((ipc = fopen(ipc_file_name, "w")) == NULL) {
+        fprintf(stderr, "M2S: Cannot open ipc file\n");
+        exit(1);
+    }
+    fclose(ipc);
     if ((ipc = fopen(ipc_file_name, "r")) == NULL) {
         fprintf(stderr, "M2S: Cannot open ipc file\n");
         exit(1);
     }
+    fprintf(stderr, "IPC Opened by m2s\n");
 }
 
 void shmem_close()
@@ -1746,19 +1753,16 @@ static void m2s_dump(FILE *f)
 {
 	arch_for_each((arch_callback_func_t) arch_dump, f);
 }
-void m2s_dump_brief_summary(FILE *f){
-    fprintf(f, "Cycles = %lld\n", esim_cycle());
-    fprintf(f, "Total Writes (Words) = %llu\n", totalDiffWords);
-    fprintf(f, "Total Writes (Bytes) = %llu\n", totalDiffBytes);
-    fprintf(f, "Total Writes (Bits) = %llu\n", totalDiffBits);
+void m2s_dump_brief_summary(FILE *f, char *str){
+    fprintf(f, "%s Cycles = %lld\n", str, esim_cycle() + global_delay_due_to_flushing);
+    fprintf(f, "%s Total Writes (Words) = %llu\n", str, totalDiffWords);
+    fprintf(f, "%s Total Writes (Bytes) = %llu\n", str, totalDiffBytes);
+    fprintf(f, "%s Total Writes (Bits) = %llu\n", str, totalDiffBits);
     fprintf(stderr, "Page_Wise_Wear_Distribution: ");
     for (int i = 0; i < MEM_LINES_COUNT; i++) {
-        if (mem_lines_wear_dist[i] > 32) {
             fprintf(stderr, "%u ", mem_lines_wear_dist[i]);
-        }
-            mem_lines_wear_dist[i] = 0;
     }
-   fprintf(stderr, "\n");
+    fprintf(stderr, "\n");
 }
 
 

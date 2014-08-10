@@ -81,7 +81,7 @@ enum mod_range_kind_t
 #define MOD_ACCESS_HASH_TABLE_SIZE  17
 
 /* Memory module */
-struct mod_t
+ struct mod_t
 {
 	/* Parameters */
 	enum mod_kind_t kind;

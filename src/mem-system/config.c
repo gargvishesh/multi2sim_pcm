@@ -46,6 +46,7 @@
  */
 struct mod_t *ptr_l2_mod;
 struct mod_t *ptr_dram_mod;
+struct cache_t *cache_dram;
 
 char *mem_config_file_name = "";
 
@@ -1342,6 +1343,7 @@ static void mem_config_calculate_sub_block_sizes(void)
                 }
                 else if(strcmp(mod->cache->name, "x86-dram") == 0){
                     ptr_dram_mod = mod;
+                    cache_dram = ptr_dram_mod->cache;
                 }
 	}
 

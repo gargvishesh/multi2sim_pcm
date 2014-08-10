@@ -36,7 +36,8 @@ enum mem_access_t
 	mem_access_exec   = 0x04,
 	mem_access_init   = 0x08,
 	mem_access_modif  = 0x10,
-        mem_access_old_data = 0x20
+        mem_access_old_data = 0x20,
+        mem_access_old_data_wo_update = 0x40
 };
 
 /* Safe mode */
@@ -95,6 +96,7 @@ void mem_copy(struct mem_t *mem, unsigned int dest, unsigned int src, int size);
 void mem_access(struct mem_t *mem, unsigned int addr, int size, void *buf, enum mem_access_t access);
 void mem_read(struct mem_t *mem, unsigned int addr, int size, void *buf);
 void mem_read_old_data(struct mem_t *mem, unsigned int addr, int size, void *buf);
+void mem_read_old_data_wo_update(struct mem_t *mem, unsigned int addr, int size, void *buf);
 void mem_write(struct mem_t *mem, unsigned int addr, int size, void *buf);
 
 void mem_zero(struct mem_t *mem, unsigned int addr, int size);

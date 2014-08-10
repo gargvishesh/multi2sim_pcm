@@ -34,16 +34,21 @@
  */
 extern struct mem_t  *g_mem;
 extern unsigned short *mem_lines_wear_dist;
+extern unsigned long long global_delay_due_to_flushing;
+extern int PCM_WRITE_WORD_LATENCY;
+extern int PCM_READ_LINE_LATENCY;
 extern int numbits[256];
 
 extern const int DRAM_LINE_SIZE;
 extern FILE *ipc;
 
+extern struct cache_t *cache_dram;
+
 #define MONITOR_ADDR_START 0
 #define MONITOR_ADDR_END 0xFFFFFFFF
 #define MONITOR_PAGE_SIZE (4*1024*1024)
 
-extern void m2s_dump_brief_summary(FILE* f);
+extern void m2s_dump_brief_summary(FILE* f, char *str);
 
 struct str_map_t cache_policy_map =
 {
@@ -331,8 +336,38 @@ int cmplinewords(char *from_addr, char *to_addr, unsigned int addr, unsigned cha
 #endif
                 return sum;
         }
+
 /* Return the way of the block to be replaced in a specific set,
  * depending on the replacement policy */
+
+int cache_flush_dram_dirty() {
+    struct cache_block_t* cache_set;
+    unsigned char buf_curr_evicted[DRAM_LINE_SIZE];
+    int set;
+    fprintf(stderr, "Flushing Cache\n");
+    for (set = 0; set < cache_dram->num_sets; set++) {
+        cache_set = cache_dram->sets[set].blocks;
+        int way;
+        for (way = 0; way < (cache_dram->assoc); way++) {
+            //if (cache_set[way].state == cache_block_modified) {
+            if (cache_set[way].state != cache_block_invalid) {
+                mem_read_old_data(g_mem, cache_set[way].vtl_addr, DRAM_LINE_SIZE, cache_set[way].data_orig);
+                mem_read(g_mem, cache_set[way].vtl_addr, DRAM_LINE_SIZE, buf_curr_evicted);
+                unsigned char diffBytes;
+                unsigned int diffBits;
+                unsigned int diffWords = cmplinewords(cache_set[way].data_orig, (char*) buf_curr_evicted, cache_set[way].vtl_addr, &diffBytes, &diffBits);
+                global_delay_due_to_flushing += PCM_WRITE_WORD_LATENCY * diffWords + PCM_READ_LINE_LATENCY;
+                totalDiffWords += diffWords;
+                totalDiffBytes += diffBytes;
+                totalDiffBits += diffBits;
+                /*Since already accounted for read line writes as well, remove modified tag, else it will cause another PCM pure read cycles extra*/
+                if(cache_set[way].state == cache_block_modified){
+                    cache_set[way].state = cache_block_exclusive;
+                }
+            }
+        }
+    }
+}
 int cache_replace_block(struct cache_t *cache, int set, unsigned int vtl_addr, int *diffWords, int write)
 {
 	//struct cache_block_t *block;
@@ -354,16 +389,27 @@ int cache_replace_block(struct cache_t *cache, int set, unsigned int vtl_addr, i
     if (cache->policy == cache_policy_lru ||
             cache->policy == cache_policy_fifo) {
         int way = cache->sets[set].way_tail->way;
-        //assert(addr != NULL);
-        //fprintf(stderr, "Cache Name: %s\n", cache->name);
+        
         if (strcmp(cache->name, "x86-dram") == 0) {
             
             /*N-chance elimination for LLC*/
             int i;
+            unsigned char buf_curr_evicted[DRAM_LINE_SIZE];
+            unsigned char diffBytes;
+            unsigned int diffBits;
+            
+            
             struct cache_block_t* candidate_block = cache->sets[set].way_tail;
             for(i=0; i<(cache->assoc)/2; i++)
             {
                 if(candidate_block->state != cache_block_modified){
+                    mem_read_old_data_wo_update(g_mem, candidate_block->vtl_addr, DRAM_LINE_SIZE, candidate_block->data_orig);
+                    mem_read(g_mem, candidate_block->vtl_addr, DRAM_LINE_SIZE, buf_curr_evicted);
+                    *diffWords = cmplinewords(candidate_block->data_orig, (char*) buf_curr_evicted, candidate_block->vtl_addr, &diffBytes, &diffBits);
+                    if(*diffWords){
+                        candidate_block->state = cache_block_modified;
+                        continue;
+                    }
                     way = candidate_block->way;
                     break;
                 }
@@ -371,35 +417,35 @@ int cache_replace_block(struct cache_t *cache, int set, unsigned int vtl_addr, i
                 /*head->*->*->*->tail*/
                 candidate_block = candidate_block->way_prev;
             }
-            if(way != cache->sets[set].way_tail->way){
-                
-            }
             
-            unsigned char buf_curr_evicted[DRAM_LINE_SIZE];
             //fprintf(stderr, "Block Set: %u Way: %u State: %d\n", set, way, cache->sets[set].blocks[way].state);
-            if(cache->sets[set].blocks[way].state == cache_block_modified){
+            candidate_block = &(cache->sets[set].blocks[way]);
+           //if (candidate_block->state == cache_block_modified) {
+           if (candidate_block->state == cache_block_modified) {
                 
-                /*We shifted read_old_data also here because sometimes, replace comes midway between the data being semi-updated. So old for the part of the line left wasn't "really" old. 
-                 In the new modifications for write where we backup current data to old data page area (only when read_old_data req comes), this placement doesn't matter.
-                 This is because no dynamic updates to old data section are taking place "during" the update request now*/
-                
-                mem_read_old_data(g_mem, cache->sets[set].blocks[way].vtl_addr, DRAM_LINE_SIZE, cache->sets[set].blocks[way].data_orig);
-                mem_read(g_mem, cache->sets[set].blocks[way].vtl_addr, DRAM_LINE_SIZE, buf_curr_evicted);
-                unsigned char diffBytes;
-                unsigned int diffBits;
-                 *diffWords = cmplinewords(cache->sets[set].blocks[way].data_orig, (char*)buf_curr_evicted, cache->sets[set].blocks[way].vtl_addr, &diffBytes, &diffBits);
-                 totalDiffWords += *diffWords;
-                 totalDiffBytes += diffBytes;
-                 totalDiffBits += diffBits;
-                 
-                 if(*diffWords){
-//                     fprintf(stderr, "Writes Flag:%d Addr:%p Set:%d Way:%d State:%d DiffWords:%d totalDiffWords:%u\n", cache->sets[set].blocks[way].flag_write, cache->sets[set].blocks[way].vtl_addr, set, way, cache->sets[set].blocks[way].state, *diffWords, totalDiffWords);
-//                     fprintf(stderr, "Data Orig (Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u(vtl_addr- MONITOR_ADDR_START)/MONITOR_PAGE_SIZE"
-//                             "\n New (Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u)\n", 
-//                             0, cache->sets[set].blocks[way].data_orig[0], 2, cache->sets[set].blocks[way].data_orig[2], 4, cache->sets[set].blocks[way].data_orig[6]
-//                             0, buf_curr_evicted[0], 3, buf_curr_evicted[3]);
-                     
-                 }
+
+                    /*We shifted read_old_data also here because sometimes, replace comes midway between the data being semi-updated. So old for the part of the line left wasn't "really" old. 
+                     In the new modifications for write where we backup current data to old data page area (only when read_old_data req comes), this placement doesn't matter.
+                     This is because no dynamic updates to old data section are taking place "during" the update request now*/
+
+                    mem_read_old_data(g_mem, candidate_block->vtl_addr, DRAM_LINE_SIZE, candidate_block->data_orig);
+                    mem_read(g_mem, candidate_block->vtl_addr, DRAM_LINE_SIZE, buf_curr_evicted);
+                    *diffWords = cmplinewords(candidate_block->data_orig, (char*) buf_curr_evicted, candidate_block->vtl_addr, &diffBytes, &diffBits);
+                    if(*diffWords){
+                     candidate_block->state = cache_block_modified;
+                    }
+                    totalDiffWords += *diffWords;
+                    totalDiffBytes += diffBytes;
+                    totalDiffBits += diffBits;
+
+                    if (*diffWords) {
+                        //                     fprintf(stderr, "Writes Flag:%d Addr:%p Set:%d Way:%d State:%d DiffWords:%d totalDiffWords:%u\n", candidate_block->flag_write, candidate_block->vtl_addr, set, way, candidate_block->state, *diffWords, totalDiffWords);
+                        //                     fprintf(stderr, "Data Orig (Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u(vtl_addr- MONITOR_ADDR_START)/MONITOR_PAGE_SIZE"
+                        //                             "\n New (Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u Buf[%d]:%u)\n", 
+                        //                             0, candidate_block->data_orig[0], 2, candidate_block->data_orig[2], 4, candidate_block->data_orig[6]
+                        //                             0, buf_curr_evicted[0], 3, buf_curr_evicted[3]);
+
+                    }
                  /***************NOTE: Custome code for PgsqlQuery16***********/
                  /*************************************************************/
                  //fprintf(stderr, "Vlt_Addr:%u\n", vtl_addr);
@@ -410,43 +456,55 @@ int cache_replace_block(struct cache_t *cache, int set, unsigned int vtl_addr, i
                  /*************************************************************/
                  /*************************************************************/
 //                 else
-//                     fprintf(stderr, "No Writes VirAddr:%p\n", cache->sets[set].blocks[way].vtl_addr); 
-                     char dummy;
+//                     fprintf(stderr, "No Writes VirAddr:%p\n", candidate_block->vtl_addr); 
+                     char ch;
 //                 if((totalDiffWords%1000) < 8 && *diffWords != 0){
 //                     m2s_dump_brief_summary(stderr);
 //                 }
                      int ret;
-                     //fseek(ipc, 0, SEEK_SET);
-                while (ret = fread(&dummy, 1, 1, ipc)) {
-                    m2s_dump_brief_summary(stderr);
+                //fseek(ipc, 0, SEEK_SET);
+                if (fread(&ch, 1, 1, ipc)) {
+                    char string[50] = {0};
+                    char len = 0;
+                    string[len++] = ch;
+                    cache_flush_dram_dirty();
+                    while (ret = fread(&ch, 1, 1, ipc)) {
+                        if((ch>='a' && ch<='z') || (ch>='A' && ch<='Z')){
+                            string[len++] = ch;
+                        }
+                    }
+                    m2s_dump_brief_summary(stderr, string);
                 }
                 
-                if ((mem_lines_wear_dist[(cache->sets[set].blocks[way].vtl_addr) >> 8]) + *diffWords > 0xFFFF){
-                    mem_lines_wear_dist[(cache->sets[set].blocks[way].vtl_addr) >> 8] = 0xFFFF;
+                
+                if ((mem_lines_wear_dist[(candidate_block->vtl_addr) >> 8]) + *diffWords > 0xFFFF){
+                    mem_lines_wear_dist[(candidate_block->vtl_addr) >> 8] = 0xFFFF;
                 }
                 else
                 {
-                    mem_lines_wear_dist[(cache->sets[set].blocks[way].vtl_addr) >> 8] += *diffWords;
+                    mem_lines_wear_dist[(candidate_block->vtl_addr) >> 8] += *diffWords;
                 }
                 
+            }else{
+               *diffWords = 0;
             }
             
             
             /************/
-            //fprintf(stderr, "Old data V1 Buf[%d]:%u Buf[%d]:%u", 13, cache->sets[set].blocks[way].data_orig[13], 14, cache->sets[set].blocks[way].data_orig[14]);
+            //fprintf(stderr, "Old data V1 Buf[%d]:%u Buf[%d]:%u", 13, candidate_block->data_orig[13], 14, candidate_block->data_orig[14]);
             //mem_read_old_data(g_mem, vtl_addr, DRAM_LINE_SIZE, buf_curr_evicted);
             //fprintf(stderr, "Old data V2 Buf[%d]:%u Buf[%d]:%u", 13, buf_curr_evicted[13], 14, buf_curr_evicted[14]);
             /**********/
 //            fprintf(stderr,"Adding new address to cache: %p\n", vtl_addr);
-            cache->sets[set].blocks[way].vtl_addr = vtl_addr;
-            cache->sets[set].blocks[way].state_vishesh = used;
+            candidate_block->vtl_addr = vtl_addr;
+            candidate_block->state_vishesh = used;
             if(write){
-                cache->sets[set].blocks[way].flag_write = 1;
+                candidate_block->flag_write = 1;
             }
             else {
-                cache->sets[set].blocks[way].flag_write = 0;
+                candidate_block->flag_write = 0;
             }
-            //fprintf(stderr, "Orig Data Addr: %u Buf[%d]:%u Buf[%d]:%u\n", vtl_addr, 0, cache->sets[set].blocks[way].data_orig[0], 3, cache->sets[set].blocks[way].data_orig[3]);
+            //fprintf(stderr, "Orig Data Addr: %u Buf[%d]:%u Buf[%d]:%u\n", vtl_addr, 0, candidate_block->data_orig[0], 3, candidate_block->data_orig[3]);
         }
         cache_update_waylist(&cache->sets[set], &cache->sets[set].blocks[way],
                 cache_waylist_head);
