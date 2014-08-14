@@ -360,6 +360,12 @@ int cache_flush_dram_dirty() {
                 totalDiffWords += diffWords;
                 totalDiffBytes += diffBytes;
                 totalDiffBits += diffBits;
+                if ((mem_lines_wear_dist[(cache_set[way].vtl_addr) >> 8]) + diffWords > 0xFFFF){
+                    mem_lines_wear_dist[(cache_set[way].vtl_addr) >> 8] = 0xFFFF;
+                } else
+                {
+                    mem_lines_wear_dist[(cache_set[way].vtl_addr) >> 8] += diffWords;
+                }
                 /*Since already accounted for read line writes as well, remove modified tag, else it will cause another PCM pure read cycles extra*/
                 if(cache_set[way].state == cache_block_modified){
                     cache_set[way].state = cache_block_exclusive;
